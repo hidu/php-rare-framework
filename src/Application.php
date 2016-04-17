@@ -17,7 +17,8 @@ class Application{
     protected $requestPathArr=array();
     
     public function __construct($appDir){
-        $this->appDir=$appDir;
+        $this->appDir=realpath($appDir);
+        define("RARE_APP_DIR", $this->appDir);
     }
     /**
      * @return string
@@ -87,6 +88,20 @@ class Application{
         if(!rare_strEndWith($this->webRoot, "/")){
             $this->webRoot.="/";
         }
+        
+        if(empty($this->requestPathArr)){
+            $this->requestPathArr[]="index";
+        }
+        
+        $this->parseUriWithRouter();
+    }
+    
+    protected function parseUriWithRouter(){
+        $router=new Router(rare_app_config("route"), new \Rare\Cache\NoCache());
+        $routeInfo=$router->parseUriPath(implode("/", $this->requestPathArr));
+        if($routeInfo){
+            $this->requestPathArr=$routeInfo["path_arr"];
+        }
     }
     
     /**
@@ -96,9 +111,6 @@ class Application{
      * @return Action
      */
     protected function getAction($requestPathArr){
-        if(empty($requestPathArr)){
-            $requestPathArr[]="index";
-        }
         $actionFile=implode(DIRECTORY_SEPARATOR,array_merge(array($this->appDir,"app","action"),$requestPathArr)).".php";
         if(!file_exists($actionFile)){
            throw new NotFoundException("action file [$actionFile] not exists");

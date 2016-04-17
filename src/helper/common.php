@@ -56,3 +56,40 @@ function rare_pathJoin(){
     }
     return implode(DIRECTORY_SEPARATOR, $arr);
 }
+
+function rare_checkDir($dir){
+    
+}
+
+function rare_rmDir($path){
+    if(!file_exists($path)){
+        return true;
+    }
+    $path=realpath($path);
+    if(strlen($path)<8){
+        return false;
+    }
+    foreach (glob($dir) as $file) {
+        if (is_dir($file)) {
+            rare_rmDir($file);
+            rmdir($file);
+        } else {
+            unlink($file);
+        }
+    }
+    return rmdir($path);  
+}
+
+function rare_app_config($name){
+    $configFilePath=rare_pathJoin(RARE_APP_DIR,"config",$name.".php");
+    if(file_exists($configFilePath)){
+        return include $configFilePath;
+    }
+    return false;
+}
+
+function rare_print($var){
+    echo "<pre>\n";
+    print_r($var);
+    echo "</pre>\n";
+}
