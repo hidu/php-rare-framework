@@ -6,7 +6,7 @@ namespace Rare\Cache;
  * 在一次请求过程中的上下文缓存
  */
 class RequestCache extends Cache {
-    protected  $cacheData = array ();
+    protected  $data = array ();
     protected $minExpireTime=0;
     /**
      * 添加、设置cache
@@ -16,14 +16,15 @@ class RequestCache extends Cache {
      * @param int $life
      * @return boolean
      */
-    public function set($key, $value, $life = 300) {
-        $expire=$life?time()+$life:0;
-        $this->$cacheData [$key] = array("data"=>$value,"expire"=>$expire);
+    public function set($key, $value, $life) {
+        $now=time();
+        $expire=$life?$now+$life:0;
+        $this->data [$key] = array("value"=>$value,"expire"=>$expire);
         if($expire>0){
             if(empty($this->minExpireTime)){
-                $this->minExpireTime=time()+3;
+                $this->minExpireTime=$now+1;
             }
-            $this->minExpireTime=min($this->minExpireTime,$expire);
+            $this->minExpireTime=min(max($this->minExpireTime,$now),$expire);
         }
         $this->gc();
         return true;
@@ -31,10 +32,11 @@ class RequestCache extends Cache {
     
     
     protected function gc(){
-        if(time()>$this->minExpireTime){
-            foreach ($this->$cacheData as $k=>$v){
-                if(!empty($v["expire"]) && $v["expire"]<time()){
-                    unset(self::$cacheData[$k]);
+        $now=time();
+        if($now>$this->minExpireTime){
+            foreach ($this->data as $k=>$v){
+                if(!empty($v["expire"]) && $v["expire"]<$now){
+                    unset($this->data[$k]);
                     continue;
                 }
                 if(!empty($v["expire"])){
@@ -43,8 +45,8 @@ class RequestCache extends Cache {
             }
         }
         
-        if (count ( $this->$cacheData ) > 10000) {
-            array_shift ( $this->cacheData );
+        if (count ( $this->data ) > 10000) {
+            array_shift ( $this->data );
         }
     }
     
@@ -56,7 +58,11 @@ class RequestCache extends Cache {
      */
     public function has($key) {
         $this->gc();
-        return array_key_exists ( $key, $this->$cacheData );
+        if (!array_key_exists ( $key, $this->data )){
+            return false;
+        }
+        $item=$this->data[$key];
+        return $item["expire"]==0 ||$item["expire"]>time();
     }
     
     /**
@@ -66,9 +72,9 @@ class RequestCache extends Cache {
      */
     public function get($key, $default = null) {
         if($this->has($key)){
-            $data=$this->$cacheData[$key];
+            $data=$this->data[$key];
             if($data["expire"]==0||$data["expire"]>time()){
-                return $data["data"];
+                return $data["value"];
             }
         }
         return $default;
@@ -80,19 +86,19 @@ class RequestCache extends Cache {
      * @return boolean
      */
     public function removeAll() {
-        $this->$cacheData = array ();
+        $this->data = array ();
         return true;
     }
     
     /**
      * 清除一个cache
      * 
-     * @param unknown_type $key            
-     * @return unknown_type
+     * @param string $key            
+     * @return boolean
      */
     public function remove($key) {
-        if(!empty(self::$cacheData [$key])){
-             unset( self::$cacheData [$key] );
+        if(array_key_exists($key, $this->data)){
+             unset($this->data [$key] );
         }
         return true;
     }

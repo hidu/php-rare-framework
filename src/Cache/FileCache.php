@@ -24,9 +24,9 @@ class FileCache extends Cache{
             return $default;
         }
         if(!empty($cache["expire"])){
-            return time()>$cache["expire"]?$default:$cache["data"];
+            return time()>$cache["expire"]?$default:$cache["value"];
         }
-        return $cache["data"];
+        return $cache["value"];
     }
     
     protected function getCache($key){
@@ -34,11 +34,11 @@ class FileCache extends Cache{
         if(!file_exists($cacheFilePath)){
             return false;
         }
-        $data=&unserialize(file_get_contents($cacheFilePath));
+        $data=@unserialize(file_get_contents($cacheFilePath));
         return is_array($data)?$data:false;
     }
     
-    public function set($key,$data,$lifetime=300){
+    public function set($key,$value,$lifetime){
        $cacheFilePath=$this->getCacheFilePath($key);
        $expire=0;
        if($lifetime){
@@ -48,7 +48,7 @@ class FileCache extends Cache{
            "key"=>$key,
            "life"=>$lifetime,
            "expire"=>$expire,
-           "data"=>$data,
+           "value"=>$value,
        );
        $dir=dirname($cacheFilePath);
        rare_checkDir($dir);

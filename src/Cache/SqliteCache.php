@@ -1,5 +1,6 @@
 <?php
 namespace Rare\Cache;
+use \PDO;
 /**
  * 使用sqlite数据库进行缓存处理
  */
@@ -45,7 +46,7 @@ class SqliteCache extends Cache{
       return $default;
     }
     
-    public function set($key, $data,$lifetime=0){
+    public function set($key, $data,$lifetime){
       $expire=0;
       if($lifetime>0){
           $expire=time()+$lifetime;

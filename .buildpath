@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <buildpath>
- <buildpathentry kind="con" path="org.eclipse.php.core.LANGUAGE"/>
 	<buildpathentry kind="src" path="src"/>
+	<buildpathentry external="true" kind="lib" path="/usr/local/Cellar/phpunit/5.3.1/libexec/phpunit-5.3.1.phar"/>
 	<buildpathentry kind="src" path="demo"/>
+	<buildpathentry kind="con" path="org.eclipse.php.core.LANGUAGE"/>
+	<buildpathentry kind="src" path="tests"/>
 </buildpath>
