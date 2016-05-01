@@ -1,4 +1,8 @@
 <?php
+
+$route=array();
+$route[]=array("path"=>"/a{name}","action"=>"Index");
+
 $config=array();
-$config["index"][]=array("path"=>"a{name}");
+$config['route']=$route;
 return $config;

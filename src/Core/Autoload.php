@@ -1,5 +1,5 @@
 <?php
-namespace Rare;
+namespace Rare\Core;
 
 use Rare\Exception\Autoload as AutoLoadException;
 

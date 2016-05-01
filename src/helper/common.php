@@ -80,13 +80,24 @@ function rare_rmDir($path){
     return rmdir($path);  
 }
 
-function rare_app_config($name){
-    $configFilePath=rare_pathJoin(RARE_APP_DIR,"config",$name.".php");
-    if(file_exists($configFilePath)){
-        return include $configFilePath;
-    }
-    return false;
+function rare_app_config($name,$default=null){
+   return \Rare\Config::get($name,$default);
 }
+
+
+function rare_array_get($arr,$key,$default=null){
+    $keyArr=explode("/",trim($key,"/"));
+    $val=$arr;
+    foreach ($keyArr as $k){
+        if(is_array($val) && array_key_exists($k, $val)){
+            $val=$val[$k];
+        }else{
+            return $default;
+        }
+    }
+    return $val;
+}
+
 
 function rare_print($var){
     echo "<pre>\n";

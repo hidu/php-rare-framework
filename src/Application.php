@@ -2,23 +2,43 @@
 namespace Rare;
 
 include_once __DIR__."/helper/helper.php";
-include_once __DIR__."/Autoload.php";
+include_once __DIR__."/Core/Autoload.php";
+use Rare\Core\Autoload;
 
 Autoload::register(Autoload::createAutoloadHandleByNamespace("Rare", __DIR__));
 
 use \Rare\Exception\NotFound as NotFoundException;
+use Rare\Exception\Exception;
 class Application{
     
     protected  $appDir;
     
-    protected $webRoot="/";
+    protected $pathInfo=array();
     
-    protected $scriptName="index.php";
-    protected $requestPathArr=array();
+    protected $filter;
     
+    protected $config=array();
+    
+    /**
+     * @var \Rare\Core\Template
+     */
+    protected $tplEng;
+    
+    /**
+     * @var \Rare\Core\ErrorPage
+     */
+    protected $errorPage;
+    
+    /**
+     * @param string $appDir
+     */
     public function __construct($appDir){
         $this->appDir=realpath($appDir);
         define("RARE_APP_DIR", $this->appDir);
+        Autoload::register(Autoload::createAutoloadHandleByNamespace("App", rare_pathJoin($this->appDir,"App")));
+        
+        $this->filter=new \Rare\Core\Filter($this);
+        $this->errorPage=new \Rare\Core\ErrorPage();
     }
     /**
      * @return string
@@ -27,35 +47,28 @@ class Application{
         return "Rare Framework (2.0.0)";
     }
     
-//     /**
-//      * @return string
-//      */
-//     public function getPathInfo(){
-//         if(isset($_SERVER["PATH_INFO"])){
-//             return '/'.trim($_SERVER["PATH_INFO"],'/');
-//         }
-        
-//         $query = isset($_SERVER['QUERY_STRING']) ? $_SERVER['QUERY_STRING'] : '';
-//         return '/'.trim(str_replace('?'.$query, '', $_SERVER['REQUEST_URI']), '/');
-//     }
     
     /**
-     * @return string
+     * @param string $key
+     * @param mixd $default
+     * @return mixd
      */
-    protected function getMethod()
-    {
-        if (isset($_REQUEST['_method'])) {
-            return strtoupper($_REQUEST['_method']);
-        } else {
-            return $_SERVER['REQUEST_METHOD'];
-        }
-    }
-    
     public function getServerVal($key,$default=null){
         return isset($_SERVER[$key])?$_SERVER[$key]:$default;
     }
-    
-    protected function parseRequestUri(){
+    /**
+     * 获取请求路径相关信息
+     * @throws \Exception
+     */
+    protected function getPathInfo(){
+        $result=array(
+            "script_name"=>"index.php",
+            "action"=>"index",
+            "uri"=>"/",
+            "web_root"=>"/",
+            "suffix"=>"",
+        );
+        
         //[SCRIPT_NAME] => /rare/index.php/aaa/ad/d
         //[SCRIPT_NAME] => /rare/index.php/aaa/ad/index.php
         $script_name=$this->getServerVal("SCRIPT_NAME","");
@@ -63,7 +76,7 @@ class Application{
         $_scriptNamePos=false;
         foreach($script_name_arr as $i=>$v){
             if(rare_strEndWith($v, ".php")){
-                $this->scriptName=$v;
+                $result["script_name"]=$v;
                 $_scriptNamePos=$i;
                 break;
             }
@@ -71,93 +84,164 @@ class Application{
         if($_scriptNamePos===false){
             throw new \Exception("wrong request");
         }
-        if($script_name_arr[count($script_name_arr)-1]==$this->scriptName){
+        if($script_name_arr[count($script_name_arr)-1]==$result["script_name"]){
             array_pop($script_name_arr);
         }
         
         //实际请求到应用的路径
-        $this->requestPathArr=array_slice($script_name_arr, $_scriptNamePos+1);
+        $_path_arr=array_slice($script_name_arr, $_scriptNamePos+1);
         //真实的webroot是  /rare_a/demo/
         //[REQUEST_URI] => /rare_a/demo/aaa/ad/d?d=1
         //[REQUEST_URI] => /rare_a/demo/aaa/ad/?d=1
         $request_uri=$this->getServerVal("REQUEST_URI","");
         $path_info= parse_url($request_uri);
-        $_path_arr=explode("/",trim($path_info["path"],"/"));
+        $_real_path_arr=explode("/",trim($path_info["path"],"/"));
         
-        $this->webRoot="/".implode("/", array_slice($_path_arr, 0,count($_path_arr)-count($this->requestPathArr)));
-        if(!rare_strEndWith($this->webRoot, "/")){
-            $this->webRoot.="/";
+        $_baseName=pathinfo($path_info["path"],PATHINFO_BASENAME);
+        $_potPos=strpos($_baseName, ".");
+        $result["suffix"]=$_potPos!==false?substr($_baseName, $_potPos+1):"";
+        //when file name is a.tar.gz   suffix is tar.gz 
+        
+        $result["web_root"]="/".implode("/", array_slice($_real_path_arr, 0,count($_real_path_arr)-count($_path_arr)));
+        if(!rare_strEndWith($result["web_root"], "/")){
+            $result["web_root"].="/";
         }
-        
-        if(empty($this->requestPathArr)){
-            $this->requestPathArr[]="index";
-        }
-        
-        $this->parseUriWithRouter();
+        $result["uri"]="/".ltrim(substr($request_uri, strlen($result["web_root"])));
+        $result["action"]=$_path_arr?implode("/", $_path_arr):"index";
+        return $result;
     }
     
-    protected function parseUriWithRouter(){
-        $router=new Router(rare_app_config("route"), new \Rare\Cache\NoCache());
-        $routeInfo=$router->parseUriPath(implode("/", $this->requestPathArr));
-        if($routeInfo){
-            $this->requestPathArr=$routeInfo["path_arr"];
+    /**
+     * 路由解析
+     * @param array $pathInfo
+     * @return array
+     */
+    protected function parseUriWithRouter($pathInfo){
+        $conf=rare_app_config("/route/",array());
+        if(empty($conf["route"])){
+            return $pathInfo;
         }
+        $cache=empty($conf["cache"])?new \Rare\Cache\NoCache():$conf["cache"];
+        $router=new \Rare\Core\Router($conf["route"], $cache);
+        
+        $tmp=explode("?", $pathInfo["uri"],2);
+        $routeInfo=$router->parseUriPath($tmp[0]);
+        if($routeInfo){
+            $pathInfo["action"]=$routeInfo["action"];
+        }
+        return $pathInfo;
+    }
+    /**
+     * 解析请求
+     */
+    protected function parseRequest(){
+        $this->pathInfo=$this->getPathInfo();
+        
+        $this->filter->beforeRouter($this->pathInfo);
+        
+        $this->pathInfo=$this->parseUriWithRouter($this->pathInfo);
+        
+        $this->filter->afterRouter($this->pathInfo);
+    }
+    
+    /**
+     * @return \Rare\Core\Template
+     */
+    protected function getTplEng(){
+        if(empty($this->tplEng)){
+            $this->tplEng=new \Rare\Core\Template();
+            $resourceDir=rare_app_config("/app/resource_dir",rare_pathJoin($this->appDir,"resource"));
+            $this->tplEng->setConfig(array(
+                "view_dir"=>rare_pathJoin($resourceDir,"view"),
+                "layout_dir"=>rare_pathJoin($resourceDir,"layout"),
+                "layout"=>"default",
+            ));
+        }
+        return $this->tplEng;
     }
     
     /**
      * 
-     * @param array $requestPathArr
+     * @param string $actionName
      * @throws NotFoundException
      * @return Action
      */
-    protected function getAction($requestPathArr){
-        $actionFile=implode(DIRECTORY_SEPARATOR,array_merge(array($this->appDir,"app","action"),$requestPathArr)).".php";
-        if(!file_exists($actionFile)){
-           throw new NotFoundException("action file [$actionFile] not exists");
-        }
-        require_once $actionFile;
+    protected function getAction($actionName){
+        $tmp=explode("@",$actionName);
+        $requestPathArr=explode("/", $tmp[0]);
         $tmp=$requestPathArr;
-        array_unshift($tmp, "app","action");
+        array_unshift($tmp, "App","Action");
         $classStr=implode("\\", $tmp);
         if(!class_exists($classStr)){
-            throw new NotFoundException("action class [{$classStr}] not exists in file [{$actionFile}]");
+            throw new NotFoundException("action class [{$classStr}] not exists");
         }
-        $action=new $classStr();
-        $tplEng=new PHPTemplate();
-        $tplEng->setConfig(array(
-            "view_dir"=>rare_pathJoin($this->appDir,"resource","view"),
-            "layout_dir"=>rare_pathJoin($this->appDir,"resource","layout"),
-            "layout"=>"default",
-        ));
-        $action->setTemplateEngine($tplEng);
+        $action=new $classStr($this);
+        $action->setTemplateEngine($this->getTplEng());
         return $action;
     }
     
+    /**
+     * 404错误
+     * @param string $msg
+     */
     public function error404($msg=''){
-        @header($_SERVER["SERVER_PROTOCOL"].' 404');
-        $emsg="The requested URL <b>{$_SERVER['REQUEST_URI']}</b> was not found on this server.";
-        $emsg.="<hr/>".$msg;
-        $this->_errorPage("404 Not Found",$emsg);
+        return $this->errorPage->error404($msg);
     }
     
-    protected  function _errorPage($title,$msg){
-        echo Util::render(rare_pathJoin(__DIR__,"resource","error.php"), array("title"=>$title,"msg"=>$msg));
-    }
-    //500错误
+    /**
+     * 500错误
+     * @param string $_error
+     */
     public function error500($_error=''){
-        @header($_SERVER["SERVER_PROTOCOL"].' 500');
-        $this->_errorPage("500 Internal Server Error", "");
+       $this->errorPage->error500();
     }
     
+    /**
+     * 
+     * @param string $actionName
+     * @throws NotFoundException
+     */
+    public function runAction($actionName){
+        $action=$this->getAction($actionName);
+        $tmp=explode("@", $actionName);
+        $fn=empty($tmp[1])?"execute":$tmp[1];
+        if(!method_exists($action, $fn)){
+            throw new NotFoundException("method execute not exists");
+        }
+        return $action->$fn();
+    }
+    
+    /**
+     * 执行应用
+     * @return boolean
+     */
     public function run(){
         try{
-            $this->parseRequestUri();
-            $action=$this->getAction($this->requestPathArr);
-            $fn="execute".ucfirst($this->getMethod());
+            $this->parseRequest();
+            $action=$this->getAction($this->pathInfo["action"]);
+            $tmp=explode("@", $this->pathInfo["action"]);
+            $fn=empty($tmp[1])?"execute":$tmp[1];
+            $method=strtolower($_SERVER["REQUEST_METHOD"]);
+            $fnRest=$fn.ucfirst($method);
+            //默认去执行 executePost executeGet 这样的请求
+            if(method_exists($action, $fnRest)){
+                $fn=$fnRest;
+            }
+            if(!method_exists($action, $fn)){
+                $this->error404("method {$fn} not exists");
+                return false;
+            }
+            header("Content-Type: text/html;charset=".rare_app_config("/app/charset","utf-8"));
+            $this->filter->beforeAction($this->pathInfo);
             $ret=$action->$fn();
+            
+            $this->filter->afterAction($this->pathInfo,$ret);
+
             if(is_array($ret)){
                 header("Content-Type: application/json");
                 echo json_encode($ret);
+            }else if (is_string($ret)){
+                echo $ret;
             }
         }catch(NotFoundException $e){
             $this->error404($e->getMessage());
@@ -165,5 +249,27 @@ class Application{
             $this->error500();
         }
     }
-
+    
+    /**
+     * 设置应用的过滤器
+     * @param \Rare\Core\Filter $filter
+     */
+    public function setFilter(\Rare\Core\Filter $filter){
+        $this->filter=$filter;
+    }
+    
+    /**
+     * 设置异常处理handler
+     * @param \Rare\Core\ErrorPage $errorPage
+     */
+    public function setErrorPage(\Rare\Core\ErrorPage $errorPage){
+        $this->errorPage=$errorPage;
+    }
+    /**
+     * 设置修改默认的模板引擎
+     * @param \Rare\Core\Template $tpl
+     */
+    public function setTplEng(\Rare\Core\Template $tpl){
+        $this->tplEng=$tpl;
+    }
 }
