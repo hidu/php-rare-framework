@@ -81,11 +81,66 @@ class Router{
                 }
                 $paramsMatch['{'.$p."}"]="(".$param[$p].")";
             }
-            $config[$k]['param']=$param;
-            $config[$k]['_path_reg']=strtr($path,$paramsMatch);
-            $config[$k]['_params']=$paramsMatch;
-            $config[$k]['id']=isset($item["id"])?$item["id"]:"";
+            $item['param']=$param;
+            $item['_path_reg']=strtr($path,$paramsMatch);
+            $item['_params']=$paramsMatch;
+            $item['id']=isset($item["id"])?$item["id"]:"";
+            $item["action"]=$this->reFormatAction($item["action"]);
+            $config[$k]=$item;
         }
         return $config;
+    }
+    /**
+     * @return array
+     */
+    public function getConfig(){
+        return $this->config;
+    }
+    
+    /**
+     * 
+     * @param string $actionName
+     * @return string
+     */
+    private function reFormatAction($actionName){
+        return implode("/", array_map("ucfirst", explode("/", $actionName)));
+    }
+    
+    /**
+     * @param string $actionName
+     * @param array $params
+     * @return string|boolean
+     */
+    public function generateUrl($actionName,$params=array()){
+        $actionName=$this->reFormatAction($actionName);
+        foreach ($this->config as $item){
+            if($item["action"]!=$actionName){
+                continue;
+            }
+            
+            if(count($item["param"])>count($params)){
+                continue;
+            }
+            
+            $isMatch=true;
+            $_params=array();
+            foreach ($item['param'] as $k=>$reg){
+                if(!isset($params[$k]) || !preg_match("#^".$reg."$#", $params[$k])){
+                    $isMatch=false;
+                    break;
+                }
+                $_params["{".$k."}"]=urlencode($params[$k]);
+                unset($params[$k]);
+            }
+            if(!$isMatch){
+                continue;
+            }
+            $url=strtr($item['path'], $_params);
+            if(!empty($params)){
+                $url.="?".http_build_query($params);
+            }
+            return $url;
+        }
+        return false;
     }
 }

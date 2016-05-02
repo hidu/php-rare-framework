@@ -29,17 +29,42 @@ class Application{
      */
     protected $errorPage;
     
+    protected static $appInstance;
+    
+    /**
+     * 
+     * @var \Rare\Core\Router
+     */
+    protected $router;
+    
     /**
      * @param string $appDir
      */
     public function __construct($appDir){
         $this->appDir=realpath($appDir);
         define("RARE_APP_DIR", $this->appDir);
+        $this->init();
+        self::$appInstance=$this;
+    }
+    
+    protected function init(){
         Autoload::register(Autoload::createAutoloadHandleByNamespace("App", rare_pathJoin($this->appDir,"App")));
         
         $this->filter=new \Rare\Core\Filter($this);
         $this->errorPage=new \Rare\Core\ErrorPage();
+        
+        $routeConf=rare_app_config("/route/",array());
+        $routeCache=empty($routeConf["cache"])?new \Rare\Cache\NoCache():$routeConf["cache"];
+        $this->router=new \Rare\Core\Router(empty($routeConf["route"])?array():$routeConf["route"], $routeCache);
     }
+    
+    public static function getInstance(){
+        if(empty(self::$appInstance)){
+            throw new \Rare\Exception\Exception("app not init");
+        }
+        return self::$appInstance;
+    }
+    
     /**
      * @return string
      */
@@ -60,7 +85,7 @@ class Application{
      * 获取请求路径相关信息
      * @throws \Exception
      */
-    protected function getPathInfo(){
+    protected function parsePathInfo(){
         $result=array(
             "script_name"=>"index.php",
             "action"=>"index",
@@ -117,15 +142,8 @@ class Application{
      * @return array
      */
     protected function parseUriWithRouter($pathInfo){
-        $conf=rare_app_config("/route/",array());
-        if(empty($conf["route"])){
-            return $pathInfo;
-        }
-        $cache=empty($conf["cache"])?new \Rare\Cache\NoCache():$conf["cache"];
-        $router=new \Rare\Core\Router($conf["route"], $cache);
-        
         $tmp=explode("?", $pathInfo["uri"],2);
-        $routeInfo=$router->parseUriPath($tmp[0]);
+        $routeInfo=$this->router->parseUriPath($tmp[0]);
         if($routeInfo){
             $pathInfo["action"]=$routeInfo["action"];
         }
@@ -135,7 +153,7 @@ class Application{
      * 解析请求
      */
     protected function parseRequest(){
-        $this->pathInfo=$this->getPathInfo();
+        $this->pathInfo=$this->parsePathInfo();
         
         $this->filter->beforeRouter($this->pathInfo);
         
@@ -171,6 +189,8 @@ class Application{
         $requestPathArr=explode("/", $tmp[0]);
         $tmp=$requestPathArr;
         array_unshift($tmp, "App","Action");
+        $len=count($tmp);
+        $tmp[$len-1].="Action";
         $classStr=implode("\\", $tmp);
         if(!class_exists($classStr)){
             throw new NotFoundException("action class [{$classStr}] not exists");
@@ -271,5 +291,20 @@ class Application{
      */
     public function setTplEng(\Rare\Core\Template $tpl){
         $this->tplEng=$tpl;
+    }
+    
+    /**
+     * 
+     * @return array
+     */
+    public function getPathInfo(){
+        return $this->pathInfo;
+    }
+    
+    /**
+     * @return \Rare\Core\Router
+     */
+    public function getRouter(){
+        return $this->router;
     }
 }

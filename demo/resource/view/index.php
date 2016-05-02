@@ -5,3 +5,5 @@
 
 <p>GET Params:</p>
 <?php rare_print($_GET);?>
+
+<?php echo url("index?name=1&title=你好");?>

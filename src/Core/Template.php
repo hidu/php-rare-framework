@@ -13,6 +13,10 @@ class Template{
         }
     }
     
+    public function setLayout($name){
+       $this->setConfig("layout",$name);
+    }
+    
     public function getConfig($key,$default=null){
         return isset($this->config[$key])?$this->config[$key]:$default;
     }
@@ -41,7 +45,7 @@ class Template{
         }
         $vars=array_merge($this->vars,$vars);
         $viewFilePath=rare_pathJoin($this->getConfig("view_dir"),$tpl).".php";
-        $str=Util::render($viewFilePath, $vars);
+        $str=\Rare\Util\Tpl::render($viewFilePath, $vars);
         
         $layout=isset($tplParams["layout"])?$tplParams["layout"]:null;
         $layoutDefault=$this->getConfig("layout");
@@ -58,7 +62,7 @@ class Template{
                     $layoutFilePath=rare_pathJoin($this->getConfig("layout_dir"),$_layout).".php";
                     $layoutVars=$this->layoutVars;
                     $layoutVars["body"]=$str;
-                    return Util::render($layoutFilePath, $layoutVars);
+                    return \Rare\Util\Tpl::render($layoutFilePath, $layoutVars);
                 }
             }
         }

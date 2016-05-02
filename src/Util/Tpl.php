@@ -1,8 +1,8 @@
 <?php
-namespace Rare\Core;
+namespace Rare\Util;
 use Rare\Exception\Exception;
 
-class Util{
+class Tpl{
     /**
      * 将数据渲染到模板中去
      * @param string $viewFile 模板文件路径

@@ -6,7 +6,7 @@ class ErrorPage{
      * @param string $msg
      */
     public function displayError($title,$msg){
-        echo \Rare\Core\Util::render(rare_pathJoin(dirname(__DIR__),"resource","error.php"), array("title"=>$title,"msg"=>$msg));
+        echo \Rare\Util\Tpl::render(rare_pathJoin(dirname(__DIR__),"resource","error.php"), array("title"=>$title,"msg"=>$msg));
     }
     
     /**
