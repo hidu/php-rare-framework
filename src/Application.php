@@ -81,59 +81,91 @@ class Application{
     public function getServerVal($key,$default=null){
         return isset($_SERVER[$key])?$_SERVER[$key]:$default;
     }
+    
+    /**
+     * @return string
+     */
+    protected function getUri(){
+        if(isset($_SERVER["PATH_INFO"])){
+            return $_SERVER["PATH_INFO"];
+        }
+        $tmp=explode("/", $_SERVER["SCRIPT_NAME"]);
+        $arr=array();
+        $flag=false;
+        $scriptName="";
+        foreach ($tmp as $i=>$v){
+            if(!$flag && rare_strEndWith($v, ".php")){
+                $flag=true;
+                $scriptName=$v;
+            }
+            if($flag && $scriptName!=$v){
+                $arr[]=$v;
+            }
+        }
+        $str=implode("/", $arr);
+        return "/".ltrim($str,"/");
+    }
+    
+    protected function getWebRoot(){
+        $tmp=explode("?",$_SERVER["REQUEST_URI"]);
+        $webRoot=$tmp[0];
+        $arr=explode("/", $webRoot);
+        foreach ($arr as $i=>$v){
+            if(rare_strEndWith($v, ".php")){
+                $tmp=array_slice($arr, 0,$i);
+                $webRoot=implode("/", $tmp);
+                break;
+            }
+        }
+        if($this->pathInfo["uri"]!="/"){
+            $webRoot=substr($webRoot, 0,strlen($webRoot)-strlen($this->pathInfo["uri"]));
+        }
+        
+        $subStr="/".$this->pathInfo["script_name"];
+        if(rare_strEndWith($webRoot, $subStr)){
+            $webRoot=substr($webRoot, 0,strlen($webRoot)-strlen($subStr));
+        }
+        return rtrim($webRoot,"/")."/";
+    }
+    
+    /**
+     */
+    protected function getScriptName(){
+        foreach (array("DOCUMENT_URI","SCRIPT_NAME") as $name){
+            if(isset($_SERVER[$name])){
+                $tmpArr=explode("/",$_SERVER[$name]);
+                foreach($tmpArr as $i=>$v){
+                    if(rare_strEndWith($v, ".php")){
+                         return $v;
+                    }
+                }
+            }
+        }
+        return false;
+    }
     /**
      * 获取请求路径相关信息
      * @throws \Exception
      */
     protected function parsePathInfo(){
-        $result=array(
-            "script_name"=>"index.php",
-            "action"=>"index",
-            "uri"=>"/",
-            "web_root"=>"/",
-            "suffix"=>"",
+        $this->pathInfo=array(
+            "uri"=>$this->getUri(),
+            "script_name"=>$this->getScriptName(),
+            "web_root"=>false,
+            "action"=>false,
         );
         
-        //[SCRIPT_NAME] => /rare/index.php/aaa/ad/d
-        //[SCRIPT_NAME] => /rare/index.php/aaa/ad/index.php
-        $script_name=$this->getServerVal("SCRIPT_NAME","");
-        $script_name_arr=explode("/", $script_name);
-        $_scriptNamePos=false;
-        foreach($script_name_arr as $i=>$v){
-            if(rare_strEndWith($v, ".php")){
-                $result["script_name"]=$v;
-                $_scriptNamePos=$i;
-                break;
-            }
-        }
-        if($_scriptNamePos===false){
+        if(empty($this->pathInfo["script_name"])){
             throw new \Exception("wrong request");
         }
-        if($script_name_arr[count($script_name_arr)-1]==$result["script_name"]){
-            array_pop($script_name_arr);
+        $this->pathInfo["web_root"]=$this->getWebRoot();
+        
+        $_pathInfo=pathinfo($this->pathInfo["uri"]);
+        $_action=trim($_pathInfo["dirname"]."/".$_pathInfo["filename"],"/");
+        if(empty($_action)){
+            $_action="index";
         }
-        
-        //实际请求到应用的路径
-        $_path_arr=array_slice($script_name_arr, $_scriptNamePos+1);
-        //真实的webroot是  /rare_a/demo/
-        //[REQUEST_URI] => /rare_a/demo/aaa/ad/d?d=1
-        //[REQUEST_URI] => /rare_a/demo/aaa/ad/?d=1
-        $request_uri=$this->getServerVal("REQUEST_URI","");
-        $path_info= parse_url($request_uri);
-        $_real_path_arr=explode("/",trim($path_info["path"],"/"));
-        
-        $_baseName=pathinfo($path_info["path"],PATHINFO_BASENAME);
-        $_potPos=strpos($_baseName, ".");
-        $result["suffix"]=$_potPos!==false?substr($_baseName, $_potPos+1):"";
-        //when file name is a.tar.gz   suffix is tar.gz 
-        
-        $result["web_root"]="/".implode("/", array_slice($_real_path_arr, 0,count($_real_path_arr)-count($_path_arr)));
-        if(!rare_strEndWith($result["web_root"], "/")){
-            $result["web_root"].="/";
-        }
-        $result["uri"]="/".ltrim(substr($request_uri, strlen($result["web_root"])));
-        $result["action"]=$_path_arr?implode("/", $_path_arr):"index";
-        return $result;
+        $this->pathInfo["action"]=implode("/", array_map("ucfirst", explode("/", $_action)));
     }
     
     /**
@@ -153,7 +185,7 @@ class Application{
      * 解析请求
      */
     protected function parseRequest(){
-        $this->pathInfo=$this->parsePathInfo();
+        $this->parsePathInfo();
         
         $this->filter->beforeRouter($this->pathInfo);
         
@@ -191,6 +223,7 @@ class Application{
         array_unshift($tmp, "App","Action");
         $len=count($tmp);
         $tmp[$len-1].="Action";
+        $tmp=array_map("ucfirst", $tmp);
         $classStr=implode("\\", $tmp);
         if(!class_exists($classStr)){
             throw new NotFoundException("action class [{$classStr}] not exists");
